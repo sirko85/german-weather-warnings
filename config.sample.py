@@ -13,10 +13,12 @@ notifications = {
 #TODO: telegram module
 	'telegram': {
 		'status': 'on',
+		'contactname': 'hans_wurst'
 	},
 #TODO: send e-mail notification
 	'mail': {
 		'status': 'on',
+		'mail': 'test@example.org'
 	}
 }
 #download_dir = '/home/pi/scripts/weather/temp/'
