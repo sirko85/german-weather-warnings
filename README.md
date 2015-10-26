@@ -10,6 +10,7 @@ The script is running on a raspberry pi and use for the notification a blink(1)
 
 ## Installation
 
+- register you on [dwd.de](http://www.dwd.de/DE/fachnutzer/dienstleister/grundversorgung/grundversorgung_node.html) to a free ftp account for the free primary care
 - Copy the config.smaple.py to config.py and edit your settings
 - create a sqlite3 database in this directory with name "weather.db"
 

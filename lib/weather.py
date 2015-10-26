@@ -15,6 +15,7 @@ import glob
 import os
 import sqlite3
 import xml.etree.ElementTree as ET
+from subprocess import call
 if(module_exists('lib.blink1')):
 	from lib.blink1 import blink1
 if(module_exists('RPi.GPIO')):
@@ -23,12 +24,12 @@ if(module_exists('RPi.GPIO')):
 class weather(object):
 
 	__configPath = 'config'
-	__dwdFtpUrl = 'ftp-outgoing2.dwd.de'
 
 	def __init__(self):
 		config = __import__(self.__configPath)
 		self.__ftp_user = config.ftp_user
 		self.__ftp_password = config.ftp_password
+		self.__ftp_server = config.ftp_server
 		self.__location_id = config.location_id
 		self.__download_dir = config.download_dir
 		self.__notifications = config.notifications
@@ -37,8 +38,8 @@ class weather(object):
 		#self.blink1 = __import__('lib.blink1')
 
 	def updateWeatherWarnings(self):
-		self.__connectFtp()
-		self.__downloadWeatherWarnings()
+		# self.__connectFtp()
+		# self.__downloadWeatherWarnings()
 		self.__importWeatherWarnings()
 		#self.checkWeatherWarnings()
 
@@ -56,7 +57,7 @@ class weather(object):
 		True
 		True
 		"""
-		self.__dwd_ftp = ftplib.FTP(self.__dwdFtpUrl)
+		self.__dwd_ftp = ftplib.FTP(self.__ftp_server)
 		self.__dwd_ftp.login(self.__ftp_user, self.__ftp_password)
 		return True
 
@@ -77,6 +78,7 @@ class weather(object):
 			sql_command = """INSERT INTO checks(datum) VALUES ({datum})"""
 			sql_command = sql_command.format(datum="(datetime('now','localtime'))")
 			cursor.execute(sql_command)
+			self.__db.commit()
 			current_time = datetime.today()
 		else:
 			current_time = datetime.strptime(res[0],'%Y-%m-%d %H:%M:%S')
@@ -101,7 +103,7 @@ class weather(object):
 			if(current_file_time <= current_time):
 				continue
 
-			print('Versuche "'+filename+ '" herunterzuladen.')
+			print('"'+filename+ '" wird heruntergeladen.')
 			file = open(self.__download_dir + filename, 'wb')
 			self.__dwd_ftp.retrbinary('RETR ' + filename, file.write)
 			file.close()
@@ -118,6 +120,7 @@ class weather(object):
 		files = glob.glob("*.xml")
 		files.sort()
 		cursor = self.__db.cursor()
+		newEntry = False
 		for file in files:
 			fileObject = open(file).read()
 			has_location_id = False
@@ -153,9 +156,34 @@ class weather(object):
 			sql_command = sql_command.format(msgType=msgType,event=event, gruppe=group,color=area_color,headline=headline, description=description, datum="(datetime('now','localtime'))", gueltig_ab=onset, gueltig_bis=expires)
 			cursor.execute(sql_command)
 			self.__db.commit()
-			print('Wetterwarnung hinzugefügt.')
 			os.remove(file)
+			newEntry = True
+		if newEntry == True:
+			print('Wetterwarnung hinzugefügt.')
 		return True
+
+	def __getLocationIds(self):
+		os.chdir(self.__download_dir)
+		files = glob.glob("*.xml")
+		files.sort()
+		cursor = self.__db.cursor()
+		areas = {}
+
+		for file in files:
+			alert = ET.parse(file)
+			root = alert.getroot()
+			info = root.find('{urn:oasis:names:tc:emergency:cap:1.2}info')
+			if info is None:
+				continue
+
+			for child in info.findall('{urn:oasis:names:tc:emergency:cap:1.2}area'):
+				for child2 in child.findall('{urn:oasis:names:tc:emergency:cap:1.2}geocode'):
+					if(child2.find('{urn:oasis:names:tc:emergency:cap:1.2}valueName').text == 'WARNCELLID'):
+						cellid = child2.find('{urn:oasis:names:tc:emergency:cap:1.2}value').text
+				areaDesc = child.find('{urn:oasis:names:tc:emergency:cap:1.2}areaDesc').text
+				areas[cellid] = areaDesc
+			os.remove(file)
+		return areas
 
 
 	def activateNotification(self, color):
@@ -166,7 +194,7 @@ class weather(object):
 		True
 		"""
 		newRgb = ''
-		for current_color in color.split():
+		for current_color in res[0]["color"].split():
 			temp = hex(int(current_color))
 			temp = str(temp)[-2:]
 			if(temp == 'x0'):
@@ -188,6 +216,18 @@ class weather(object):
 				GPIO.output(self.__notification['raspberry']['gpiopin'], True)
 		except:
 			print('Error for raspberry')
+		try:
+			if(self.__notifications['telegram']['status'] == 'on'):
+				self.__sendTelegram(res)
+		except:
+			print('Error for telegram')
+		return True
+
+	def __sendTelegram(self,res):
+		for currentRes in res:
+			msg = "Unwetterwarnung: {headline} | {description} | {gueltig_bis}"
+			msg = msg.format(headline=currentRes['headline'],description=currentRes['description'],gueltig_bis=currentRes['gueltig_bis'])
+			call(self.__notifications['telegram']['telegram_path'], 'msg='+msg, 'fwd='+self.__notifications['telegram']['contactname'])
 		return True
 
 	def deactivateNotification(self):
@@ -207,15 +247,15 @@ class weather(object):
 		"""
 
 		cursor = self.__db.cursor()
-		sql_command = """SELECT color FROM weather_warnings WHERE gueltig_bis >= (datetime('now','localtime')) AND is_checked = False ORDER BY msgType LIMIT 1"""
+		sql_command = """SELECT color FROM weather_warnings WHERE gueltig_bis >= (datetime('now','localtime')) AND is_checked = False ORDER BY msgType"""
 		cursor.execute(sql_command)
-		res = cursor.fetchone()
+		res = cursor.fetchall()
 		if(res is None):
 			return False
-		self.activateNotification(res[0])
+		self.activateNotification(res)
 		return True
 
-	def setStatusChecked():
+	def setStatusChecked(self):
 		"""
 		Set current warning on checked
 		>>> weather.setStatusChecked()
@@ -232,6 +272,13 @@ class weather(object):
 		cursor.execute(sql_command)
 		self.__db.commit()
 		return True
+
+	def printCurrentIds(self):
+		self.__connectFtp()
+		self.__downloadWeatherWarnings()
+		areas = self.__getLocationIds()
+		for cellid, areaDesc in areas.items():
+			print(str(cellid) + ': ' + areaDesc)
 
 if __name__ == "__main__":
 	doctest.testmod()

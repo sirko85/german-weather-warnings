@@ -1,4 +1,5 @@
 import sqlite3
+from lib.weather import weather
 
 db = sqlite3.connect('weather.db')
 
@@ -23,3 +24,6 @@ cursor.execute(sql_command)
 sql_command = """CREATE UNIQUE INDEX unique_warnings ON weather_warnings(event,headline,gueltig_ab, gueltig_bis);"""
 cursor.execute(sql_command)
 db.commit()
+print('Current Location ID\'s:')
+w = weather()
+w.printCurrentIds()

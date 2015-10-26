@@ -13,7 +13,8 @@ notifications = {
 #TODO: telegram module
 	'telegram': {
 		'status': 'on',
-		'contactname': 'hans_wurst'
+		'contactname': 'hans_wurst',
+		'telegram_path': '/home/pi/tg/bin/telegram-cli'
 	},
 #TODO: send e-mail notification
 	'mail': {
