@@ -1,20 +1,20 @@
 # german-weather-warnings
 checks german weather warnings via the dwd FTP-Server for your location.
 
-It's my first Python project. I want to check with crontab every x minutes for new warnings for my location.
-The script is running on a raspberry pi and use for the notification a blink(1)
+You can check with crontab every x minutes for new warnings for your location.
+You can push notifications via blink(1), Raspberry GPIO Pin, Telegram Messanger and E-Mail.
 
-## Required Python Modules
+## Required
 
-- sqlite3
+- python3
+- sqlite3 python module
 
 ## Installation
 
 - register you on [dwd.de](http://www.dwd.de/DE/fachnutzer/dienstleister/grundversorgung/grundversorgung_node.html) to a free ftp account for the free primary care
 - Copy the config.smaple.py to config.py and edit your settings
-- create a sqlite3 database in this directory with name "weather.db"
+- `python3 weather_setup.py` use it to create the database and to show a list of all current location_id's with current warnings
 
 ## TODOS
 
 - Notification with Telegram Messanger
-- Notification with E-Mail

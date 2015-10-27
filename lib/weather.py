@@ -14,6 +14,8 @@ import zipfile
 import glob
 import os
 import sqlite3
+import smtplib
+from email.mime.text import MIMEText
 import xml.etree.ElementTree as ET
 from subprocess import call
 if(module_exists('lib.blink1')):
@@ -34,18 +36,18 @@ class weather(object):
 		self.__download_dir = config.download_dir
 		self.__notifications = config.notifications
 		self.__db = sqlite3.connect('weather.db')
+		self.__db.row_factory = sqlite3.Row
 		#from lib.blink1 import blink1
 		#self.blink1 = __import__('lib.blink1')
 
 	def updateWeatherWarnings(self):
-		# self.__connectFtp()
-		# self.__downloadWeatherWarnings()
+		self.__connectFtp()
+		self.__downloadWeatherWarnings()
 		self.__importWeatherWarnings()
-		#self.checkWeatherWarnings()
 
 		cursor = self.__db.cursor()
-		sql_command = """UPDATE checks SET datum = {datum}"""
-		sql_command = sql_command.format(datum="(datetime('now','localtime'))")
+		sql_command = """UPDATE checks SET created_at = {created_at}"""
+		sql_command = sql_command.format(created_at="(datetime('now','localtime'))")
 		cursor.execute(sql_command)
 		self.__db.commit()
 
@@ -70,16 +72,17 @@ class weather(object):
 		self.__dwd_ftp.cwd(directory)
 
 		cursor = self.__db.cursor()
-		sql_command = """SELECT datum FROM checks ORDER BY datum DESC LIMIT 1"""
+		sql_command = """SELECT created_at FROM checks ORDER BY created_at DESC LIMIT 1"""
 		cursor.execute(sql_command)
 		res = cursor.fetchone()
 		if(res is None):
 			print('No date found... starting download from today 00 o\'Clock.')
-			sql_command = """INSERT INTO checks(datum) VALUES ({datum})"""
-			sql_command = sql_command.format(datum="(datetime('now','localtime'))")
+			sql_command = """INSERT INTO checks(created_at) VALUES ({created_at})"""
+			sql_command = sql_command.format(created_at="(datetime('now','localtime'))")
 			cursor.execute(sql_command)
 			self.__db.commit()
 			current_time = datetime.today()
+			current_time = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
 		else:
 			current_time = datetime.strptime(res[0],'%Y-%m-%d %H:%M:%S')
 
@@ -103,7 +106,7 @@ class weather(object):
 			if(current_file_time <= current_time):
 				continue
 
-			print('"'+filename+ '" wird heruntergeladen.')
+			print('"'+filename+ '" downloaded.')
 			file = open(self.__download_dir + filename, 'wb')
 			self.__dwd_ftp.retrbinary('RETR ' + filename, file.write)
 			file.close()
@@ -120,7 +123,6 @@ class weather(object):
 		files = glob.glob("*.xml")
 		files.sort()
 		cursor = self.__db.cursor()
-		newEntry = False
 		for file in files:
 			fileObject = open(file).read()
 			has_location_id = False
@@ -137,11 +139,11 @@ class weather(object):
 			root = alert.getroot()
 			msgType = root.find('{urn:oasis:names:tc:emergency:cap:1.2}msgType').text
 			info = root.find('{urn:oasis:names:tc:emergency:cap:1.2}info')
-			group = ''
+			weather_group = ''
 			area_color = ''
 			for child in info.findall('{urn:oasis:names:tc:emergency:cap:1.2}eventCode'):
 				if(child.find('{urn:oasis:names:tc:emergency:cap:1.2}valueName').text == 'GROUP'):
-					group = child.find('{urn:oasis:names:tc:emergency:cap:1.2}value').text
+					weather_group = child.find('{urn:oasis:names:tc:emergency:cap:1.2}value').text
 
 				if(child.find('{urn:oasis:names:tc:emergency:cap:1.2}valueName').text == 'AREA_COLOR'):
 					area_color = child.find('{urn:oasis:names:tc:emergency:cap:1.2}value').text
@@ -151,15 +153,12 @@ class weather(object):
 			onset = datetime.strptime(info.find('{urn:oasis:names:tc:emergency:cap:1.2}onset').text,'%Y-%m-%dT%H:%M:%S+00:00')
 			headline = info.find('{urn:oasis:names:tc:emergency:cap:1.2}headline').text
 			description = info.find('{urn:oasis:names:tc:emergency:cap:1.2}description').text
-			sql_command = """INSERT OR IGNORE INTO weather_warnings (msgType, event, gruppe, color, headline, description, datum, gueltig_ab, gueltig_bis)
-				VALUES ('{msgType}', '{event}', '{gruppe}', '{color}', '{headline}', '{description}', {datum}, "{gueltig_ab}", "{gueltig_bis}")"""
-			sql_command = sql_command.format(msgType=msgType,event=event, gruppe=group,color=area_color,headline=headline, description=description, datum="(datetime('now','localtime'))", gueltig_ab=onset, gueltig_bis=expires)
+			sql_command = """INSERT OR IGNORE INTO weather_warnings (msgType, event, weather_group, color, headline, description, created_at, valid_from, valid_till)
+				VALUES ('{msgType}', '{event}', '{weather_group}', '{color}', '{headline}', '{description}', {created_at}, "{valid_from}", "{valid_till}")"""
+			sql_command = sql_command.format(msgType=msgType,event=event, weather_group=weather_group,color=area_color,headline=headline, description=description, created_at="(datetime('now','localtime'))", valid_from=onset, valid_till=expires)
 			cursor.execute(sql_command)
 			self.__db.commit()
 			os.remove(file)
-			newEntry = True
-		if newEntry == True:
-			print('Wetterwarnung hinzugefügt.')
 		return True
 
 	def __getLocationIds(self):
@@ -186,7 +185,7 @@ class weather(object):
 		return areas
 
 
-	def activateNotification(self, color):
+	def activateNotification(self, res):
 		"""
 		Activate the notification. Configuration for notifications is in the config.py.
 		>>> x = weather()
@@ -221,13 +220,42 @@ class weather(object):
 				self.__sendTelegram(res)
 		except:
 			print('Error for telegram')
+		try:
+			if(self.__notifications['mail']['status'] == 'on'):
+				self.__sendMail(res)
+		except:
+			print('Error for E-Mail')
 		return True
 
 	def __sendTelegram(self,res):
 		for currentRes in res:
-			msg = "Unwetterwarnung: {headline} | {description} | {gueltig_bis}"
-			msg = msg.format(headline=currentRes['headline'],description=currentRes['description'],gueltig_bis=currentRes['gueltig_bis'])
+			msg = self.__notifications['telegram']['msg']
+			msg = msg.format(headline=currentRes['headline'],description=currentRes['description'],valid_till=currentRes['valid_till'])
 			call(self.__notifications['telegram']['telegram_path'], 'msg='+msg, 'fwd='+self.__notifications['telegram']['contactname'])
+			if(self.__notifications['mail']['automaticcheck']):
+				self.setStatusChecked(currentRes)
+		return True
+
+	def __sendMail(self,res):
+		msg = ''
+		for currentRes in res:
+			msgPart = self.__notifications['mail']['msg']
+			msgPart = msgPart.format(headline=currentRes['headline'],description=currentRes['description'],valid_till=currentRes['valid_till'],valid_from=currentRes['valid_from'], color=currentRes['color'], weather_group=currentRes['weather_group'], event=currentRes['event'], msgType=currentRes['msgType'])
+			msg = msg + msgPart
+		msg = MIMEText(msg)
+
+		# me == the sender's email address
+		# you == the recipient's email address
+		msg['Subject'] = self.__notifications['mail']['subject']
+		msg['From'] = self.__notifications['mail']['mail']
+		msg['To'] = self.__notifications['mail']['mail']
+
+		# Send the message via our own SMTP server.
+		s = smtplib.SMTP('localhost')
+		s.send_message(msg)
+		s.quit()
+		if(self.__notifications['mail']['automaticcheck']):
+			self.setStatusChecked()
 		return True
 
 	def deactivateNotification(self):
@@ -247,28 +275,35 @@ class weather(object):
 		"""
 
 		cursor = self.__db.cursor()
-		sql_command = """SELECT color FROM weather_warnings WHERE gueltig_bis >= (datetime('now','localtime')) AND is_checked = False ORDER BY msgType"""
+		sql_command = """SELECT * FROM weather_warnings WHERE valid_till >= (datetime('now','localtime')) AND is_checked = 'False' ORDER BY msgType"""
 		cursor.execute(sql_command)
 		res = cursor.fetchall()
-		if(res is None):
+		if(len(res) == 0):
 			return False
 		self.activateNotification(res)
 		return True
 
-	def setStatusChecked(self):
+	def setStatusChecked(self,currentRes = None):
 		"""
 		Set current warning on checked
 		>>> weather.setStatusChecked()
 		True
 		"""
 		cursor = self.__db.cursor()
-		sql_command = """SELECT rowid FROM weather_warnings WHERE gueltig_bis >= (datetime('now','localtime')) AND is_checked = False ORDER BY msgType LIMIT 1"""
+		if(currentRes is not None):
+			sql_command = """UPDATE weather_warnings SET is_checked = 'True' WHERE is_checked = 'False' AND rowid = {id}"""
+			sql_command = sql_command.format(id=currentRes['rowid'])
+			cursor.execute(sql_command)
+			self.__db.commit()
+			return True
+
+		sql_command = """SELECT rowid FROM weather_warnings WHERE valid_till >= (datetime('now','localtime')) AND is_checked = 'False' ORDER BY msgType"""
 		cursor.execute(sql_command)
 		res = cursor.fetchone()
 		if(res is None):
 			return False
-		sql_command = """UPDATE weather_warnings SET is_checked = True WHERE is_checked = False AND rowid = {id}"""
-		sql_command = sql_command.format(id=res[0])
+		sql_command = """UPDATE weather_warnings SET is_checked = 'True' WHERE is_checked = 'False' AND rowid = {id}"""
+		sql_command = sql_command.format(id=res['rowid'])
 		cursor.execute(sql_command)
 		self.__db.commit()
 		return True
