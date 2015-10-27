@@ -22,6 +22,9 @@ if(module_exists('lib.blink1')):
 	from lib.blink1 import blink1
 if(module_exists('RPi.GPIO')):
 	import RPi.GPIO as GPIO
+if(module_exists('smtplib')):
+	import smtplib
+	from email.mime.text import MIMEText
 
 class weather(object):
 
