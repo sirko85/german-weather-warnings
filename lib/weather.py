@@ -13,6 +13,7 @@ import ftplib
 import zipfile
 import glob
 import os
+import sys
 import sqlite3
 import smtplib
 from email.mime.text import MIMEText
@@ -38,7 +39,7 @@ class weather(object):
 		self.__location_id = config.location_id
 		self.__download_dir = config.download_dir
 		self.__notifications = config.notifications
-		self.__db = sqlite3.connect('weather.db')
+		self.__db = sqlite3.connect(os.path.dirname(sys.argv[0])+'/weather.db')
 		self.__db.row_factory = sqlite3.Row
 		#from lib.blink1 import blink1
 		#self.blink1 = __import__('lib.blink1')
