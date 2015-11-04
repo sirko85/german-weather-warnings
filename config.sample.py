@@ -8,12 +8,12 @@ notifications = {
 		'status': 'on',
 	},
 	'raspberry': {
-		'status': 'on',
+		'status': 'off',
 		'gpiopin': '40',
 	},
 #TODO: telegram module
 	'telegram': {
-		'status': 'on',
+		'status': 'off',
 		'contactname': 'hans_wurst',
 		'telegram_path': '/home/pi/tg/bin/telegram-cli',
 		'msg': "Unwetterwarnung: {headline} | {description} | {valid_till}",
@@ -27,6 +27,10 @@ notifications = {
 		'msg': "Unwetterwarnung: {headline} \n\n {description} \n\n Gültig ab: {valid_from} \n\n Gültig bis: {valid_till}",
 		# possible Infos:headline, description, valid_till, valid_from, color, weather_group, event, msgType
 		'automaticcheck': True,
+		'smtp_mail_server': '',
+		'smtp_port': 587,
+		'login': '',
+		'password': '',
 	}
 }
 #download_dir = '/home/pi/scripts/weather/temp/'

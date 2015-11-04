@@ -6,19 +6,19 @@ def module_exists(module_name):
 	else:
 		return True
 
-import doctest
+import codecs
 import datetime
-from datetime import datetime
+import doctest
 import ftplib
-import zipfile
 import glob
 import os
-import sys
 import sqlite3
-import smtplib
-from email.mime.text import MIMEText
+import sys
 import xml.etree.ElementTree as ET
+import zipfile
+from datetime import datetime
 from subprocess import call
+
 if(module_exists('lib.blink1')):
 	from lib.blink1 import blink1
 if(module_exists('RPi.GPIO')):
@@ -38,11 +38,10 @@ class weather(object):
 		self.__ftp_server = config.ftp_server
 		self.__location_id = config.location_id
 		self.__download_dir = config.download_dir
+		self.__database_path = config.database_path
 		self.__notifications = config.notifications
-		self.__db = sqlite3.connect(os.path.dirname(sys.argv[0])+'/weather.db')
+		self.__db = sqlite3.connect(self.__database_path+'weather.db')
 		self.__db.row_factory = sqlite3.Row
-		#from lib.blink1 import blink1
-		#self.blink1 = __import__('lib.blink1')
 
 	def updateWeatherWarnings(self):
 		self.__connectFtp()
@@ -208,7 +207,6 @@ class weather(object):
 			if(self.__notifications['blink1']['status'] == 'on'):
 				signal = blink1()
 				signal.setRgbColor(newRgb)
-				signal.strobe()
 		except:
 			print('Error for blink(1)')
 		try:
@@ -255,11 +253,14 @@ class weather(object):
 		msg['To'] = self.__notifications['mail']['mail']
 
 		# Send the message via our own SMTP server.
-		s = smtplib.SMTP('localhost')
+		s = smtplib.SMTP(self.__notifications['mail']['smtp_mail_server'],elf.__notifications['mail']['smtp_port'])
+		s.ehlo()
+		s.starttls()
+		s.login(self.__notifications['mail']['smtp_login'],self.__notifications['mail']['smtp_password'])
 		s.send_message(msg)
-		s.quit()
+		s.close()
 		if(self.__notifications['mail']['automaticcheck']):
-			self.setStatusChecked()
+			self.setStatusChecked(res)
 		return True
 
 	def deactivateNotification(self):
@@ -279,7 +280,7 @@ class weather(object):
 		"""
 
 		cursor = self.__db.cursor()
-		sql_command = """SELECT * FROM weather_warnings WHERE valid_till >= (datetime('now','localtime')) AND is_checked = 'False' ORDER BY msgType"""
+		sql_command = """SELECT rowid,* FROM weather_warnings WHERE valid_till >= (datetime('now','localtime')) AND is_checked = 'False' ORDER BY msgType"""
 		cursor.execute(sql_command)
 		res = cursor.fetchall()
 		if(len(res) == 0):
@@ -287,20 +288,22 @@ class weather(object):
 		self.activateNotification(res)
 		return True
 
-	def setStatusChecked(self,currentRes = None):
+	def setStatusChecked(self,res = None):
 		"""
 		Set current warning on checked
 		>>> weather.setStatusChecked()
 		True
 		"""
 		cursor = self.__db.cursor()
-		if(currentRes is not None):
-			sql_command = """UPDATE weather_warnings SET is_checked = 'True' WHERE is_checked = 'False' AND rowid = {id}"""
-			sql_command = sql_command.format(id=currentRes['rowid'])
+		if(res is not None):
+			ids = []
+			for currentRes in res:
+				ids.append(str(currentRes['rowid']))
+			sql_command = """UPDATE weather_warnings SET is_checked = 'True' WHERE is_checked = 'False' AND rowid IN ({id})"""
+			sql_command = sql_command.format(id=','.join(ids))
 			cursor.execute(sql_command)
 			self.__db.commit()
 			return True
-
 		sql_command = """SELECT rowid FROM weather_warnings WHERE valid_till >= (datetime('now','localtime')) AND is_checked = 'False' ORDER BY msgType"""
 		cursor.execute(sql_command)
 		res = cursor.fetchone()

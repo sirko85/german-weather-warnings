@@ -6,7 +6,7 @@ You can push notifications via blink(1), Raspberry GPIO Pin, Telegram Messanger 
 
 ## Required
 
-- python3
+- >= python3.4
 - sqlite3 python module
 
 ## Installation
@@ -18,3 +18,7 @@ You can push notifications via blink(1), Raspberry GPIO Pin, Telegram Messanger 
 ## TODOS
 
 - Notification with Telegram Messanger
+
+## Raspberry Pi installation
+
+- To sending E-Mail notifications you need python3.4, also on a raspberry pi. How to install a current python3 version click [here](http://sowingseasons.com/blog/building-python-3-4-on-raspberry-pi-2.html)

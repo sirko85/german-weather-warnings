@@ -27,6 +27,6 @@ cursor.execute(sql_command)
 sql_command = """CREATE UNIQUE INDEX unique_warnings ON weather_warnings(event,headline,valid_from, valid_till);"""
 cursor.execute(sql_command)
 db.commit()
+weatherwarning = weather()
 print('Current Location ID\'s:')
-w = weather()
-w.printCurrentIds()
+weatherwarning.printCurrentIds()
