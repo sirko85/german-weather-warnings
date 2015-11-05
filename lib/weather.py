@@ -233,9 +233,11 @@ class weather(object):
 		for currentRes in res:
 			msg = self.__notifications['telegram']['msg']
 			msg = msg.format(headline=currentRes['headline'],description=currentRes['description'],valid_till=currentRes['valid_till'])
-			call(self.__notifications['telegram']['telegram_path'], 'msg='+msg, 'fwd='+self.__notifications['telegram']['contactname'])
-			if(self.__notifications['mail']['automaticcheck']):
-				self.setStatusChecked(currentRes)
+			cmd = self.__notifications['telegram']['telegram_send_script_path'] +' "'+self.__notifications['telegram']['contactname']+'"' + ' "'+msg+'"'
+			os.system(cmd)
+
+		if(self.__notifications['mail']['automaticcheck']):
+			self.setStatusChecked(res)
 		return True
 
 	def __sendMail(self,res):
@@ -253,7 +255,7 @@ class weather(object):
 		msg['To'] = self.__notifications['mail']['mail']
 
 		# Send the message via our own SMTP server.
-		s = smtplib.SMTP(self.__notifications['mail']['smtp_mail_server'],elf.__notifications['mail']['smtp_port'])
+		s = smtplib.SMTP(self.__notifications['mail']['smtp_mail_server'], self.__notifications['mail']['smtp_port'])
 		s.ehlo()
 		s.starttls()
 		s.login(self.__notifications['mail']['smtp_login'],self.__notifications['mail']['smtp_password'])

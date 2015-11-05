@@ -15,7 +15,7 @@ notifications = {
 	'telegram': {
 		'status': 'off',
 		'contactname': 'hans_wurst',
-		'telegram_path': '/home/pi/tg/bin/telegram-cli',
+		'telegram_send_script_path': '/path/to/send_script',
 		'msg': "Unwetterwarnung: {headline} | {description} | {valid_till}",
 		# possible Infos:headline, description, valid_till, valid_from, color, weather_group, event, msgType
 		'automaticcheck': True,
